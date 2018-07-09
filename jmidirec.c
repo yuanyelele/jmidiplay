@@ -39,11 +39,11 @@
 #define PROGRAM_NAME		"jmidirec"
 #define PROGRAM_VERSION		"1.0"
 
-jack_port_t *jack_port;
 jack_client_t *jack_client = NULL;
+jack_port_t *jack_port = NULL;
+smf_t *smf = NULL;
 int start = -1;
 int ctrl_c_pressed = 0;
-smf_t *smf = NULL;
 smf_track_t *tracks[16]; /* We allocate one track per MIDI channel. */
 
 static double nframes_to_seconds(jack_nframes_t nframes)
@@ -52,7 +52,7 @@ static double nframes_to_seconds(jack_nframes_t nframes)
 	return nframes / (double)sr;
 }
 
-void process_midi_input(jack_nframes_t nframes)
+static void process_midi_input(jack_nframes_t nframes)
 {
 	void *port_buffer = jack_port_get_buffer(jack_port, nframes);
 	if (port_buffer == NULL) {
@@ -75,7 +75,7 @@ void process_midi_input(jack_nframes_t nframes)
 			continue;
 
 		/* First event received? */
-		if (start == -1)
+		if (start == 0)
 			start = last_frame_time + event.time;
 
 		smf_event_t *smf_event = smf_event_new_from_pointer(event.buffer, event.size);
@@ -92,24 +92,28 @@ void process_midi_input(jack_nframes_t nframes)
 
 static int process_callback(jack_nframes_t nframes, void *arg)
 {
-	process_midi_input(nframes);
+	if (start != -1)
+		process_midi_input(nframes);
 	return 0;
 }
 
 /* Connects to the specified input port, disconnecting already connected ports. */
-void connect_to_output_port(const char *port)
+gboolean connect_to_output_port(gpointer user_data)
 {
+	const char *port = (const char *)user_data;
 	if (jack_port_disconnect(jack_client, jack_port)) {
 		g_critical("Could not disconnect MIDI port.");
 		exit(EXIT_FAILURE);
 	}
 
 	if (jack_connect(jack_client, port, jack_port_name(jack_port))) {
-		g_critical("Could not connect to '%s'.", port);
-		exit(EXIT_FAILURE);
+		g_warning("Could not connect to '%s'.", port);
+		return TRUE;
 	}
 
 	g_message("Connected to %s.", port);
+	start = 0;
+	return FALSE;
 }
 
 static void init_jack()
@@ -141,19 +145,14 @@ static void init_jack()
 
 gboolean writer_timeout(gpointer user_data)
 {
-	char *file_name = (char *)user_data;
-
-	/*
-	 * XXX: It should be done like this: http://wwwtcs.inf.tu-dresden.de/~tews/Gtk/x2992.html
-	 */
-	if (ctrl_c_pressed == 0)
+	if (!ctrl_c_pressed)
 		return TRUE;
 
 	jack_deactivate(jack_client);
 
-	/* Get rid of empty tracks. */
 	smf_rewind(smf);
 
+	/* Get rid of empty tracks. */
 	for (int i = 0; i < 16; i++)
 		if (tracks[i]->number_of_events == 0) {
 			smf_track_remove_from_smf(tracks[i]);
@@ -165,6 +164,7 @@ gboolean writer_timeout(gpointer user_data)
 		exit(EXIT_SUCCESS);
 	}
 
+	const char *file_name = (const char *)user_data;
 	if (smf_save(smf, file_name)) {
 		g_critical("Could not save file '%s', sorry.", file_name);
 		exit(EXIT_FAILURE);
@@ -174,7 +174,7 @@ gboolean writer_timeout(gpointer user_data)
 	exit(EXIT_SUCCESS);
 }
 
-void ctrl_c_handler(int signum)
+void ctrl_c_handler(int sig)
 {
 	ctrl_c_pressed = 1;
 }
@@ -229,10 +229,10 @@ int main(int argc, char *argv[])
 	}
 
 	init_jack();
-	const char *port_name = argv[1];
-	connect_to_output_port(port_name);
 
 	g_timeout_add(100, writer_timeout, (gpointer)argv[2]);
+	if (connect_to_output_port(argv[1]))
+		g_timeout_add(1000, connect_to_output_port, argv[1]);
 	signal(SIGINT, ctrl_c_handler);
 
 	g_message("Recording will start at the first received note; press ^C to write the file and exit.");
@@ -242,4 +242,3 @@ int main(int argc, char *argv[])
 	/* Not reached. */
 	return 0;
 }
-
