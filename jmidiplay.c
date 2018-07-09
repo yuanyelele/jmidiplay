@@ -42,11 +42,11 @@
 #define MIDI_CONTROLLER         0xB0
 #define MIDI_ALL_SOUND_OFF      120
 
-jack_port_t *jack_port;
 jack_client_t *jack_client = NULL;
+jack_port_t *jack_port = NULL;
+smf_t *smf = NULL;
 int start = 0;
 int ctrl_c_pressed = 0;
-smf_t *smf = NULL;
 
 static jack_nframes_t seconds_to_nframes(double seconds)
 {
@@ -128,24 +128,28 @@ static void process_midi_output(jack_nframes_t nframes)
 
 static int process_callback(jack_nframes_t nframes, void *arg)
 {
-	process_midi_output(nframes);
+	if (start != 0)
+		process_midi_output(nframes);
 	return 0;
 }
 
 /* Connects to the specified input port, disconnecting already connected ports. */
-void connect_to_input_port(const char *port)
+gboolean connect_to_input_port(gpointer user_data)
 {
+	const char *port = (const char *)user_data;
 	if (jack_port_disconnect(jack_client, jack_port)) {
 		g_critical("Could not disconnect MIDI port.");
 		exit(EXIT_FAILURE);
 	}
 
 	if (jack_connect(jack_client, jack_port_name(jack_port), port)) {
-		g_critical("Could not connect to '%s'.", port);
-		exit(EXIT_FAILURE);
+		g_warning("Could not connect to '%s'.", port);
+		return TRUE;
 	}
 
 	g_message("Connected to %s.", port);
+	start = jack_frame_time(jack_client);
+	return FALSE;
 }
 
 static void init_jack()
@@ -237,14 +241,12 @@ int main(int argc, char *argv[])
 	}
 	g_message("%s.", smf_decode(smf));
 
-	g_timeout_add(1000, emergency_exit_timeout, NULL);
-	signal(SIGINT, ctrl_c_handler);
-
 	init_jack();
-	const char *port_name = argv[1];
-	connect_to_input_port(port_name);
 
-	start = jack_frame_time(jack_client);
+	g_timeout_add(1000, emergency_exit_timeout, NULL);
+	if (connect_to_input_port(argv[1]))
+		g_timeout_add(1000, connect_to_input_port, argv[1]);
+	signal(SIGINT, ctrl_c_handler);
 
 	g_main_loop_run(g_main_loop_new(NULL, TRUE));
 
