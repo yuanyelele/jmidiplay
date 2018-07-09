@@ -85,7 +85,7 @@ static void process_midi_input(jack_nframes_t nframes)
 		}
 
 		int channel = smf_event->midi_buffer[0] & 0x0F;
-		int t = nframes_to_seconds(last_frame_time + event.time - start);
+		double t = nframes_to_seconds(last_frame_time + event.time - start);
 		smf_track_add_event_seconds(tracks[channel], smf_event, t);
 	}
 }
