@@ -13,3 +13,12 @@ JACK MIDI file recorder (via [libsmf](http://libsmf.sourceforge.net/))
 usage: `jmidirec [-vh] output:port file_name`
 
 example: `jmidirec jack-keyboard:midi_out save.mid`
+
+# jmididump
+
+dump JACK MIDI messages
+
+usage: `jmididump [-vh] output:port`
+
+example: `jmidirec jack-keyboard:midi_out`
+
