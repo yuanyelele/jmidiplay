@@ -25,19 +25,13 @@
  *
  */
 
-/*
- * This is jack-smf-recorder, Standard MIDI File recorder for JACK MIDI.
- *
- * For questions and comments, contact Edward Tomasz Napierala <trasz@FreeBSD.org>.
- */
-
 #include <stdio.h>
 #include <sysexits.h>
 #include <glib.h>
 #include <jack/jack.h>
 #include <jack/midiport.h>
 
-#define PROGRAM_NAME		"jmidirec"
+#define PROGRAM_NAME		"jmididump"
 #define PROGRAM_VERSION		"1.0"
 
 jack_client_t *jack_client = NULL;
@@ -135,7 +129,7 @@ static void show_version()
 
 static void usage()
 {
-	printf("usage: jmidirec [-vh] output:port\n");
+	printf("usage: jmididump [-vh] output:port\n");
 }
 
 int main(int argc, char *argv[])
